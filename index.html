@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家庭任務追蹤板</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --card: #fff;
+    --text: #333;
+    --muted: #888;
+    --accent: #2563eb;
+    --kid: #ec4899;
+    --worker: #f59e0b;
+    --adult: #10b981;
+    --border: #e5e5e5;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); line-height:1.6; padding: 20px; }
+  .container { max-width: 800px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: .85rem; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 20px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--card); cursor: pointer; font-size: .9rem; transition: all .2s;
+  }
+  .tab:hover { border-color: var(--accent); }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tab.kid.active { background: var(--kid); border-color: var(--kid); }
+  .tab.worker.active { background: var(--worker); border-color: var(--worker); }
+  .tab.adult.active { background: var(--adult); border-color: var(--adult); }
+  .task-list { display: flex; flex-direction: column; gap: 10px; }
+  .task-card {
+    background: var(--card); border-radius: 10px; padding: 16px 20px;
+    box-shadow: var(--shadow); display: flex; gap: 14px; align-items: flex-start;
+  }
+  .task-card.kid { border-left: 4px solid var(--kid); }
+  .task-card.worker { border-left: 4px solid var(--worker); }
+  .task-card.adult { border-left: 4px solid var(--adult); }
+  .task-icon { font-size: 1.4rem; min-width: 32px; text-align: center; }
+  .task-body { flex: 1; min-width: 0; }
+  .task-name { font-weight: 600; font-size: 1rem; }
+  .task-meta { display: flex; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+  .task-meta span { font-size: .8rem; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 10px;
+    font-size: .75rem; font-weight: 500; color: #fff;
+  }
+  .badge.kid { background: var(--kid); }
+  .badge.worker { background: var(--worker); }
+  .badge.adult { background: var(--adult); }
+  .task-detail { font-size: .85rem; color: #555; margin-top: 6px; }
+  .task-detail a { color: var(--accent); }
+  .empty { text-align: center; padding: 40px; color: var(--muted); }
+  .today-badge {
+    background: #dc2626; color: #fff; font-size: .7rem; padding: 2px 8px;
+    border-radius: 8px; margin-left: 6px; vertical-align: middle;
+  }
+  .date-display { font-size: .8rem; color: var(--muted); margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>家庭任務追蹤板</h1>
+  <p class="subtitle">Last synced: <span id="syncDate"></span></p>
+  <div class="date-display" id="todayDisplay"></div>
+  <div class="tabs">
+    <button class="tab active" onclick="filter('all')">全部</button>
+    <button class="tab kid" onclick="filter('小孩')">小孩</button>
+    <button class="tab worker" onclick="filter('工人')">工人</button>
+    <button class="tab adult" onclick="filter('大人')">大人</button>
+    <button class="tab" onclick="filter('today')">今日</button>
+  </div>
+  <div class="task-list" id="taskList"></div>
+</div>
+
+<script>
+const TASKS = [
+  { assignee:"小孩", name:"圖書館續借", freq:"每週六、日", detail:"在電話上通過圖書館應用程式檢查並續借圖書", icon:"📚", days:["sat","sun"] },
+  { assignee:"工人", name:"清潔冰箱並拍攝儲物狀況", freq:"每週六", detail:"移除過期物品、清潔污漬、檢查即將過期食物，並拍攝冰箱內部照片", icon:"🧊", days:["sat"] },
+  { assignee:"工人", name:"小孩手錶充電", freq:"每週", detail:"充至 70%-85% 即可", icon:"⌚", days:[] },
+  { assignee:"工人", name:"吸塵器充電", freq:"每週", detail:"充至 70%-85% 即可", icon:"🔌", days:[] },
+  { assignee:"工人", name:"盤點食材庫存", freq:"每週", detail:"檢查雞蛋、米、冷凍食品存量", icon:"🥚", days:[] },
+  { assignee:"工人", name:"擦乾洗衣機密封圈", freq:"每次洗衣後", detail:"清洗後用布/風扇擦乾洗衣機門邊橡膠密封圈", icon:"🌀", days:[] },
+  { assignee:"工人", name:"清潔濾水器", freq:"每月", detail:"清潔濾水器", icon:"💧", days:[] },
+  { assignee:"大人", name:"購買電子都會票", freq:"每月10號", detail:'<a href="https://www.mtr.com.hk/mtrmobile/ch/transport/monthlypass/ticket-purchase/e-city-saver/" target="_blank">MTR 購買頁面</a>', icon:"🚇", daysOfMonth:[10] },
+  { assignee:"大人", name:"登記車船津貼", freq:"每月10號", detail:"登記車船津貼", icon:"📝", daysOfMonth:[10] },
+  { assignee:"大人", name:"交管理費", freq:"每月5號", detail:"繳交物業管理費", icon:"🏠", daysOfMonth:[5] },
+];
+
+const DAY_NAMES = ["sun","mon","tue","wed","thu","fri","sat"];
+const today = new Date();
+const TODAY_DAY = DAY_NAMES[today.getDay()];
+const TODAY_DATE = today.getDate();
+
+function isTodayTask(t) {
+  if (t.days && t.days.includes(TODAY_DAY)) return true;
+  if (t.daysOfMonth && t.daysOfMonth.includes(TODAY_DATE)) return true;
+  return false;
+}
+
+document.getElementById("syncDate").textContent = new Date().toLocaleString("zh-HK");
+document.getElementById("todayDisplay").textContent =
+  `今天是 ${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日 星期${["日","一","二","三","四","五","六"][today.getDay()]}`;
+
+function filter(role) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  const activeTab = document.querySelector(`.tab${role==="all"?"":role==="小孩"?".kid":role==="工人"?".worker":role==="大人"?".adult":""}`);
+  if (role==="all") document.querySelectorAll(".tab")[0].classList.add("active");
+  else if (role==="today") document.querySelectorAll(".tab")[4].classList.add("active");
+  else {
+    document.querySelectorAll(".tab").forEach(t => {
+      if (t.textContent === role) t.classList.add("active");
+    });
+  }
+
+  let filtered = TASKS;
+  if (role === "today") {
+    filtered = TASKS.filter(isTodayTask);
+  } else if (role !== "all") {
+    filtered = TASKS.filter(t => t.assignee === role);
+  }
+
+  const list = document.getElementById("taskList");
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="empty">暫無任務</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(t => `
+    <div class="task-card ${t.assignee==="小孩"?"kid":t.assignee==="工人"?"worker":"adult"}">
+      <div class="task-icon">${t.icon}</div>
+      <div class="task-body">
+        <div class="task-name">
+          ${t.name}
+          ${isTodayTask(t) ? '<span class="today-badge">今天</span>' : ''}
+          <span class="badge ${t.assignee==="小孩"?"kid":t.assignee==="工人"?"worker":"adult"}">${t.assignee}</span>
+        </div>
+        <div class="task-meta">
+          <span>⏱ ${t.freq}</span>
+        </div>
+        ${t.detail ? `<div class="task-detail">${t.detail}</div>` : ''}
+      </div>
+    </div>
+  `).join("");
+}
+
+filter("all");
+</script>
+</body>
+</html>
